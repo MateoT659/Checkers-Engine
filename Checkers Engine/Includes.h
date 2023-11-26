@@ -64,7 +64,7 @@ std::unordered_map<char, QTreeNode*> getLeafMap(std::set<QTreeNode*> from);
 std::set<QTreeNode*> getLeafSet(std::set<QTreeNode*> from);
 Board* performMove(Board* original, char piece, QTreeNode* move);
 Board* getBoardFromMove(Board* top, char square, QTreeNode* move);
-int getRating(Board* board, int depth);
+int getRating(Board* board, int depth, int parentM);
 std::pair<char, QTreeNode*> getBestMove(Board* board, int depth);
 
 //graphics.cpp

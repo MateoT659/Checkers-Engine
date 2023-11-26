@@ -17,7 +17,17 @@ SDL_Renderer* renderer;
 	//include the button for whos turn it is 
 
 	//current goals:
-	//start on game tree and make rudamentary minimax search (no alpha-beta yet)
+	//optimize (alpha-beta is first, then try these options)
+
+/*
+* optimize so when theres 1 move it just plays the goddamn move instead of looking into the future for no reason
+* 
+* find the complexity? also maybe some sets/maps can become unordered sets/maps so lookup is faster.
+* make gametree logic iterative instead of recursive (recursion is slow because of the insane stack usage, this might also make alphabeta easier to do) 
+* optimize getleafmovemap and the move pruning when there is a jump (maybe make getleafmovemap return a set of pairs?)
+* optimize rating systems 
+* 
+*/
 
 
 	//Garnish for after everything: (mostly text-based stuff)
@@ -30,6 +40,7 @@ SDL_Renderer* renderer;
 
 
 int main(int argc, char* args[]) {
+
 	SDL_Event event;
 	bool running = true;
 	bool play = true; //controls if the game can be played. used to stop two bots playing each other
@@ -139,7 +150,7 @@ int main(int argc, char* args[]) {
 						break;
 					case BOTMID:
 					{
-						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 5);
+						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 6);
 
 						square = pair.first;
 						usedMove = pair.second;
@@ -147,7 +158,8 @@ int main(int argc, char* args[]) {
 						break;
 					case BOTHARD:
 					{
-						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 6);
+						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 7); 
+						//209,000 -> 5,000  function calls for 7
 
 						square = pair.first;
 						usedMove = pair.second;
@@ -372,7 +384,7 @@ Board* performMove(Board* top, char square, QTreeNode* move) {
 	return currentboard;
 }
 
-int getRating(Board* board, int depth) {
+int getRating(Board* board, int depth, int parentM) {
 	//first, check if the board is a win or a tie
 	switch (board->isWinningBoardGen()) {
 	case 'b':
@@ -388,7 +400,7 @@ int getRating(Board* board, int depth) {
 	}
 	if (moves.empty()) return 0;
 
-	int bestrating = 0;
+	int bestrating = board->turn ? -100:100;
 	bool rated = false;
 
 	Board* tempboard;
@@ -397,18 +409,24 @@ int getRating(Board* board, int depth) {
 	for (auto i = moves.begin(); i != moves.end(); i++) {
 		for (QTreeNode* treenode : i->second) {
 			tempboard = getBoardFromMove(board, i->first, treenode);
-			temprating = getRating(tempboard, depth-1);
+			temprating = getRating(tempboard, depth-1, bestrating);
 			delete tempboard;
 			if (board->turn) {
 				if (!rated || temprating > bestrating) {
 					rated = true;
 					bestrating = temprating;
+					if (bestrating >= parentM) { //alpha-beta pruning 
+						return bestrating;
+					}
 				}
 			}
 			else {
 				if (!rated || temprating < bestrating) {
 					rated = true;
 					bestrating = temprating;
+					if (bestrating <= parentM) { //alpha-beta pruning.
+						return bestrating;
+					}
 				}
 			}
 		}
@@ -417,9 +435,14 @@ int getRating(Board* board, int depth) {
 }
 
 std::pair<char, QTreeNode*> getBestMove(Board* board, int depth) {
-	std::map<char, std::set<QTreeNode*>> moves = board->getLeafMoveMap();
+	std::map<char, std::set<QTreeNode*>> moves = board->getLeafMoveMap(); 
+	if (moves.size() == 1) { //this happens often when a jump is forced
+		if (moves.begin()->second.size() == 1) {
+			return std::pair<char, QTreeNode*>(moves.begin()->first, *(moves.begin()->second.begin()));
+		}
+	}
 	std::pair<char, QTreeNode*> returnMove;
-	int bestrating = 0;
+	int bestrating = board->turn?-100:100;
 	bool rated = false;
 
 	Board* tempboard;
@@ -428,7 +451,7 @@ std::pair<char, QTreeNode*> getBestMove(Board* board, int depth) {
 	for (auto i = moves.begin(); i != moves.end(); i++) {
 		for (QTreeNode* treenode : i->second) {
 			tempboard = getBoardFromMove(board, i->first, treenode);
-			temprating = getRating(tempboard, depth);
+			temprating = getRating(tempboard, depth, bestrating);
 			delete tempboard;
 			if (board->turn) {
 				if (!rated || temprating > bestrating) {
@@ -448,5 +471,6 @@ std::pair<char, QTreeNode*> getBestMove(Board* board, int depth) {
 			}
 		}
 	}
+
 	return returnMove;
 }
