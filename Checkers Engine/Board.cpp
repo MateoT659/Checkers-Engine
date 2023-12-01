@@ -10,9 +10,10 @@ Board::Board()
 
 Board::Board(char* piece, bool turn, int bt, int rt)
 { //piece should already be initialzied
-	pieces = new char[32];
+	pieces = piece;
+	/*pieces = new char[32];
 	for (int i = 0; i < 32; i++)
-		pieces[i] = piece[i];
+		pieces[i] = piece[i];*/
 	this->turn = turn;
 	numBlackTaken = bt;
 	numRedTaken = rt;
@@ -76,7 +77,7 @@ void Board::getJumpTree(QTreeNode *tree, bool kinged, std::unordered_set<char> j
 				if (temp >= 0 && temp < 32 && pieces[temp] == 0) {
 
 					tree->DL = new QTreeNode(temp, tree);
-					getJumpTree(tree->DL, kinged || temp / 4 == 0, newjumped);
+					getJumpTree(tree->DL, true, newjumped);
 				}
 			}
 			temp = getDR(tree->index);
@@ -87,7 +88,7 @@ void Board::getJumpTree(QTreeNode *tree, bool kinged, std::unordered_set<char> j
 				if (temp >= 0 && temp < 32 && pieces[temp] == 0) {
 
 					tree->DR = new QTreeNode(temp, tree);
-					getJumpTree(tree->DR, kinged || temp / 4 == 0, newjumped);
+					getJumpTree(tree->DR, true, newjumped);
 				}
 			}
 		}
@@ -126,7 +127,7 @@ void Board::getJumpTree(QTreeNode *tree, bool kinged, std::unordered_set<char> j
 				if (temp >= 0 && temp < 32 && pieces[temp] == 0) {
 
 					tree->UL = new QTreeNode(temp, tree);
-					getJumpTree(tree->UL, kinged || temp / 4 == 7, newjumped);
+					getJumpTree(tree->UL, true, newjumped);
 				}
 			}
 			temp = getUR(tree->index);
@@ -137,7 +138,7 @@ void Board::getJumpTree(QTreeNode *tree, bool kinged, std::unordered_set<char> j
 				if (temp >= 0 && temp < 32 && pieces[temp] == 0) {
 
 					tree->UR = new QTreeNode(temp, tree);
-					getJumpTree(tree->UR, kinged || temp / 4 == 7, newjumped);
+					getJumpTree(tree->UR, true, newjumped);
 				}
 			}
 		}
@@ -369,7 +370,7 @@ std::map<char, std::set<QTreeNode*>> Board::getMoveMap()
 
 	std::set<QTreeNode*> tempset;
 	bool forcedjump = false; //if there is a jump/are multiple jumps available, they MUST be taken. therefore we prune the single hops.
-
+	char jumppoint = 0;
 
 	for (char i = 0; i < 32; i++) {
 		if (pieces[i] == (turn ? 'r':'b') || pieces[i] == (turn ? 'R':'B')) {
@@ -380,9 +381,11 @@ std::map<char, std::set<QTreeNode*>> Board::getMoveMap()
 					for (QTreeNode* jump : tempset) {
 						if ((jump->index / 4) % 2 == (i / 4) % 2) {
 							forcedjump = true;
-							freeMoveMap(movemap);
-							movemap.clear();
-							i = -1; //this is -1 because of i++! it would skip 0 otherwise
+							jumppoint = i+1;
+							
+							//freeMoveMap(movemap);
+							//movemap.clear();
+							//i = -1; //this is -1 because of i++! it would skip 0 otherwise
 
 							//reset with forced jumps (this is so wildy inefficient i am so mad that i cant think of how to make this better)
 							//maybe save the index where its found so i postprocess if forcedjump and then do the thing. worst case its still trash but who knows.
@@ -390,8 +393,23 @@ std::map<char, std::set<QTreeNode*>> Board::getMoveMap()
 						}
 					}
 				}
-
-
+			}
+		}
+	}
+	std::vector<QTreeNode*> todelete;
+	for (char i = 0; i < jumppoint; i++) {
+		//prune out the non-jumps from the sets.
+		if (movemap.find(i) != movemap.end()) {
+			for (QTreeNode* jump : movemap[i]) {
+				if ((jump->index / 4) % 2 != (i / 4) % 2) {
+					todelete.push_back(jump);
+				}
+			}
+			for (QTreeNode* jump : todelete) {
+				movemap[i].erase(jump);
+			}
+			if (movemap[i].empty()) {
+				movemap.erase(i);
 			}
 		}
 	}
@@ -414,8 +432,8 @@ Board* Board::move(char piece, QTreeNode* move)
 {
 	//returns next board based on move. in use, recursively from the base to the root.
 	bool takes = false;
-	char newboard[32];
-
+	char* newboard = new char[32];
+	int inddiv = move->index / 4;
 	for (int i = 0; i < 32; i++) {
 		newboard[i] = pieces[i];
 	}
@@ -423,17 +441,18 @@ Board* Board::move(char piece, QTreeNode* move)
 	newboard[move->index] = pieces[piece];
 	newboard[piece] = 0;
 	
-	if ((move->index / 4) % 2 == (piece / 4) % 2 ){
-		
-		newboard[(move->index + piece+ (((move->index/4)%2==1)?-1:1))/2] = 0;
+	if (inddiv % 2 == (piece / 4) % 2 ){
+		newboard[(move->index + piece+ ((inddiv%2==1)?-1:1))/2] = 0;
 		takes = true;
 	}
-	if (move->index / 4 == 0 && newboard[move->index] == 'r') {
+
+	if (inddiv == 0 && newboard[move->index] == 'r') {
 		newboard[move->index] = 'R';
 	}
-	if (move->index / 4 == 7 && newboard[move->index] == 'b') {
+	else if (inddiv == 7 && newboard[move->index] == 'b') {
 		newboard[move->index] = 'B';
 	}
+
 	return new Board(newboard, !this->turn, numBlackTaken + ((takes && turn)?1:0), numRedTaken + ((takes && !turn) ? 1 : 0));
 }
 
@@ -463,27 +482,116 @@ char Board::isWinningBoardGen()
 
 int Board::rating()
 {
+
 	int rating = 0;
+	//int numpieces = 0;
 	//positive rating for red, negative rating for black.
+	//rates kings 5, pawns 2. plus 1 for keeping pieces on the back.
 	for (int i = 0; i < 32; i++) {
 		switch (pieces[i]) {
 		case 'R':
-			rating += 3;
+			rating += 4;
+			//numpieces++;
 			break;
 		case 'r':
-			rating++;
+			rating += 2;
 			if (i > 27) rating++;
+			//numpieces++;
 			break;
 		case 'B':
-			rating -= 3;
+			rating -= 4;
+			//numpieces++;
 			break;
 		case 'b':
-			rating--;
+			rating -= 2;
 			if (i < 4) rating--;
+			//numpieces++;
 			break;
 		}
 	}
 	return rating;
+	//return rating * (25 - numpieces);
+	
+	//rates kings 5, pawns 2. promotes moves towards the center and keeping baseline pawns. slightly more expensive and inhibits alpha-beta pruning slightly
+	/*int i = 0;
+	for (i; i < 7; i++) {
+		switch (pieces[i]) {
+		case 'R':
+			rating += 5;
+			break;
+		case 'r':
+			rating+=2;
+			break;
+		case 'B':
+			rating -= 5;
+			break;
+		case 'b':
+			rating-=2;
+			if (i < 4) rating--;
+			break;
+		}
+	}
+	int mod = 0;
+	bool bonus = false;
+	for (i; i < 23; i++) {
+		mod = i % 4;
+		bonus = mod == 2 || mod == 3;
+		switch (pieces[i]) {
+		case 'R':
+			rating += 5;
+			if (bonus) rating++;
+			break;
+		case 'r':
+			rating += 2;
+			if (bonus) rating++;
+			break;
+		case 'B':
+			rating -= 5;
+			if (bonus) rating--;
+			break;
+		case 'b':
+			rating -= 2;
+			if (bonus) rating--;
+			break;
+		}
+	}
+	
+	for (i; i < 32; i++) {
+		switch (pieces[i]) {
+		case 'R':
+			rating += 5;
+			break;
+		case 'r':
+			rating += 2;
+			if (i > 27) rating++;
+			break;
+		case 'B':
+			rating -= 5;
+			break;
+		case 'b':
+			rating -= 2;
+			break;
+		}
+	}*/ 
+
+	//rates kings 5, pawns 2. nothing else. cheap and works well with pruning. VERY aggerssive playstyle. wins over the other ratings.
+	//for (int i = 0; i < 32; i++) {
+	//	switch (pieces[i]) {
+	//	case 'R':
+	//		rating += 5;
+	//		break;
+	//	case 'r':
+	//		rating += 2;
+	//		break;
+	//	case 'B':
+	//		rating -= 5;
+	//		break;
+	//	case 'b':
+	//		rating -= 2;
+	//		break;
+	//	}
+	//}
+	//return rating;
 }
 
 void Board::print()

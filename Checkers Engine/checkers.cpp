@@ -40,7 +40,6 @@ SDL_Renderer* renderer;
 
 
 int main(int argc, char* args[]) {
-
 	SDL_Event event;
 	bool running = true;
 	bool play = true; //controls if the game can be played. used to stop two bots playing each other
@@ -118,12 +117,12 @@ int main(int argc, char* args[]) {
 					{
 
 
-						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 4);
+						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 4, createLeafMap(moves));
 
 						square = pair.first;
 						usedMove = pair.second;
 
-						//itearte through all moves and find the best
+						//iterate through all moves and find the best
 						/*Board* temp;
 						bool rated = false;
 						int ratingmax = 0;
@@ -150,7 +149,7 @@ int main(int argc, char* args[]) {
 						break;
 					case BOTMID:
 					{
-						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 6);
+						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 6, createLeafMap(moves));
 
 						square = pair.first;
 						usedMove = pair.second;
@@ -158,7 +157,14 @@ int main(int argc, char* args[]) {
 						break;
 					case BOTHARD:
 					{
-						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 7); 
+						Uint64 timer = SDL_GetTicks64();
+
+
+						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 8, createLeafMap(moves));
+						
+						Uint64 after = SDL_GetTicks64();
+						std::cout << (after - timer) / 1000 << "." << (after - timer) % 1000 << " seconds\n";
+						
 						//209,000 -> 5,000  function calls for 7
 
 						square = pair.first;
@@ -269,6 +275,22 @@ void freeMoveMap(std::map<char, std::set<QTreeNode*>> movemap){
 	}
 }
 
+void freeLeafMoveMap(std::map<char, std::set<QTreeNode*>> leafmovemap){
+	//same thing but i have to go back to the roots because of how my destructor works
+	std::unordered_set<QTreeNode*> roots;
+	for (auto i = leafmovemap.begin(); i != leafmovemap.end(); i++) {
+		for (QTreeNode* ptr : i->second) {
+			while (ptr->parent != nullptr) {
+				ptr = ptr->parent;
+			}
+			roots.insert(ptr);
+		}
+	}
+	for (QTreeNode* ptr : roots) {
+		delete ptr;
+	}
+}
+
 std::unordered_map<char, QTreeNode*> getLeafMap(std::set<QTreeNode*> from) {
 	//returns a map where the char represents the index of QTreeNode* (for easy hashing)
 	std::unordered_map<char, QTreeNode*> leafset;
@@ -295,16 +317,26 @@ std::unordered_map<char, QTreeNode*> getLeafMap(std::set<QTreeNode*> from) {
 	return leafset;
 }
 
+std::map<char, std::set<QTreeNode*>> createLeafMap(std::map<char, std::set<QTreeNode*>>from) {
+	std::map<char, std::set<QTreeNode*>> ret;
+	for (auto iter = from.begin(); iter != from.end(); iter++) {
+		ret[iter->first] = getLeafSet(iter->second);
+	}
+	return ret; //for easy use of leafmoves
+}
+
 std::set<QTreeNode*> getLeafSet(std::set<QTreeNode*> from) {
 	//returns a set with the leaf nodes from a set with the root nodes.
 	std::set<QTreeNode*> leafset;
+	std::stack<QTreeNode*> dfs;
+	QTreeNode* curr;
+	size_t currsize; //used to determine if curr is leaf
 
 	for (QTreeNode* node : from) {
 		//dfs the node and add all the leaves to the leafset
-		std::stack<QTreeNode*> dfs;
-		QTreeNode* curr;
+
 		dfs.push(node);
-		size_t currsize; //used to determine if curr is leaf
+		
 		while (!dfs.empty()) {
 			curr = dfs.top(); dfs.pop();
 			currsize = dfs.size();
@@ -386,23 +418,19 @@ Board* performMove(Board* top, char square, QTreeNode* move) {
 
 int getRating(Board* board, int depth, int parentM) {
 	//first, check if the board is a win or a tie
-	switch (board->isWinningBoardGen()) {
+	switch (board->isWinningBoard()) {
 	case 'b':
 		return -100;
 	case 'r':
 		return 100;
 	}
-
-	std::map<char, std::set<QTreeNode*>> moves = board->getLeafMoveMap();
-	if (moves.empty()) return board->turn ? -100 : 100;
+	std::map <char, std::set<QTreeNode*>> todelete = board->getMoveMap();
+	std::map <char, std::set<QTreeNode*>> moves = createLeafMap(todelete); //uses the same ptrs, so we only have to free todelete
+	if (moves.empty()) return 0;
 	if (depth <= 1) {
 		return board->rating();
 	}
-	if (moves.empty()) return 0;
-
-	int bestrating = board->turn ? -100:100;
-	bool rated = false;
-
+	int bestrating = board->turn ? -101:101; 
 	Board* tempboard;
 	int temprating;
 	//iterate through all possible boards, run a max/min on their rating based on board->turn (true->max, false->min)
@@ -412,38 +440,38 @@ int getRating(Board* board, int depth, int parentM) {
 			temprating = getRating(tempboard, depth-1, bestrating);
 			delete tempboard;
 			if (board->turn) {
-				if (!rated || temprating > bestrating) {
-					rated = true;
+				if (temprating > bestrating) {
 					bestrating = temprating;
 					if (bestrating >= parentM) { //alpha-beta pruning 
+						freeMoveMap(todelete);
 						return bestrating;
 					}
 				}
 			}
 			else {
-				if (!rated || temprating < bestrating) {
-					rated = true;
+				if (temprating < bestrating) {
 					bestrating = temprating;
 					if (bestrating <= parentM) { //alpha-beta pruning.
+						freeMoveMap(todelete);
 						return bestrating;
 					}
 				}
 			}
 		}
 	}
+	freeMoveMap(todelete);
 	return bestrating;
 }
 
-std::pair<char, QTreeNode*> getBestMove(Board* board, int depth) {
-	std::map<char, std::set<QTreeNode*>> moves = board->getLeafMoveMap(); 
+std::pair<char, QTreeNode*> getBestMove(Board* board, int depth, std::map<char,std::set<QTreeNode*>> moves) {
+	
 	if (moves.size() == 1) { //this happens often when a jump is forced
 		if (moves.begin()->second.size() == 1) {
 			return std::pair<char, QTreeNode*>(moves.begin()->first, *(moves.begin()->second.begin()));
 		}
 	}
 	std::pair<char, QTreeNode*> returnMove;
-	int bestrating = board->turn?-100:100;
-	bool rated = false;
+	int bestrating = board->turn?-101:101;
 
 	Board* tempboard;
 	int temprating;
@@ -452,18 +480,16 @@ std::pair<char, QTreeNode*> getBestMove(Board* board, int depth) {
 		for (QTreeNode* treenode : i->second) {
 			tempboard = getBoardFromMove(board, i->first, treenode);
 			temprating = getRating(tempboard, depth, bestrating);
-			delete tempboard;
+
 			if (board->turn) {
-				if (!rated || temprating > bestrating) {
-					rated = true;
+				if (temprating > bestrating) {
 					bestrating = temprating;
 					returnMove.first = i->first;
 					returnMove.second = treenode;
 				}
 			}
 			else {
-				if (!rated || temprating < bestrating) {
-					rated = true;
+				if (temprating < bestrating) {
 					bestrating = temprating;
 					returnMove.first = i->first;
 					returnMove.second = treenode;
@@ -471,6 +497,5 @@ std::pair<char, QTreeNode*> getBestMove(Board* board, int depth) {
 			}
 		}
 	}
-
 	return returnMove;
 }

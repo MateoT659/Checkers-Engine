@@ -10,12 +10,14 @@
 #include <stack>
 #include <unordered_map>
 
+//SDL stuff for the popup window
 const int SCREEN_HEIGHT = 600, SCREEN_WIDTH = 800;
 extern SDL_Window* window;
 extern SDL_Renderer* renderer;
 
 class Board;
-//qtreenode struct for jumps
+
+//qtreenode struct for moves (checkers can jump multiple times per turn, so this is sadly neccessary)
 class QTreeNode
 {
 public:
@@ -32,14 +34,15 @@ public:
 	}
 };
 
+
 typedef enum PlayerType {
 	HUMAN, //Human input, moves pieces.
 	BOTEASY, //best move finding engine - low depth. (depth = 4)
-	BOTMID, //best move finding engine - mid depth. (depth = 8)
-	BOTHARD //best move finding engine - high depth. (depth = 12)
+	BOTMID, //best move finding engine - mid depth. (depth = 7)
+	BOTHARD //best move finding engine - high depth. (depth = 8)
 }PlayerType;
-
 const int TYPENUM = 4;
+
 
 //potentially add more for different types: BOTRANDOM (chooses random move), BOTBAD (plays worst move?)
 
@@ -65,7 +68,8 @@ std::set<QTreeNode*> getLeafSet(std::set<QTreeNode*> from);
 Board* performMove(Board* original, char piece, QTreeNode* move);
 Board* getBoardFromMove(Board* top, char square, QTreeNode* move);
 int getRating(Board* board, int depth, int parentM);
-std::pair<char, QTreeNode*> getBestMove(Board* board, int depth);
+std::pair<char, QTreeNode*> getBestMove(Board* board, int depth, std::map<char,std::set<QTreeNode*>> move);
+std::map<char, std::set<QTreeNode*>> createLeafMap(std::map<char, std::set<QTreeNode*>>from);
 
 //graphics.cpp
 void drawCircle(Vec2 pos, int radius);
