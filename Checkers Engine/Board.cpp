@@ -9,11 +9,9 @@ Board::Board()
 }
 
 Board::Board(char* piece, bool turn, int bt, int rt)
-{ //piece should already be initialzied
+{
+	//piece should already be allocated - only use of this constructor is in Board::move()
 	pieces = piece;
-	/*pieces = new char[32];
-	for (int i = 0; i < 32; i++)
-		pieces[i] = piece[i];*/
 	this->turn = turn;
 	numBlackTaken = bt;
 	numRedTaken = rt;
@@ -46,6 +44,7 @@ void Board::getJumpTree(QTreeNode *tree, bool kinged, std::unordered_set<char> j
 	//check all children, recursively call :(
 	char temp = 0;
 	if (turn == true) {
+		//red's turn
 		temp = getUL(tree->index);
 		if (temp >= 0 && temp < 32 && (pieces[temp] == 'b' || pieces[temp] == 'B') && jumped.find(temp) == jumped.end()) {
 			std::unordered_set<char> newjumped = jumped;
@@ -95,7 +94,7 @@ void Board::getJumpTree(QTreeNode *tree, bool kinged, std::unordered_set<char> j
 
 	}
 	else {
-		//black turn
+		//black's turn
 		temp = getDL(tree->index);
 		if (temp >= 0 && temp < 32 && (pieces[temp] == 'r' || pieces[temp] == 'R') && jumped.find(temp) == jumped.end()) {
 			std::unordered_set<char> newjumped = jumped;
@@ -148,12 +147,7 @@ void Board::getJumpTree(QTreeNode *tree, bool kinged, std::unordered_set<char> j
 
 std::set<QTreeNode*> Board::getMoves(char ind, bool forcejump)
 {
-	//each vector represents a move (you can chain jumps in this game so you need the path to know which pieces to get rid of
-	/*
-	* unordered_set is not used here because hashing a vector would be order n in the length of the path,
-	* but finding a vector in a set is logn where n is the number of paths possible. on average this is just as fast.
-	* im using an array-based quadtree for paths that include a string of jumps. 
-	*/
+	//returns a set of 4-nary tree nodes representing move destinations for a piece.
 	std::set<QTreeNode*> moves;
 	if (ind < 0 || ind >= 32) return moves; //no moves for something that doesnt exist
 	char temp = 0;
@@ -207,7 +201,6 @@ std::set<QTreeNode*> Board::getMoves(char ind, bool forcejump)
 					break;
 				}
 			}
-
 			//no break here because r is a subset of R (a kinged piece always has the moves that its normal counterpart has)
 		case 'r':
 			temp = getUL(ind);
@@ -308,7 +301,6 @@ std::set<QTreeNode*> Board::getMoves(char ind, bool forcejump)
 					break;
 				}
 			}
-
 			//no break here because r is a subset of R (a kinged piece always has the moves that its normal counterpart has)
 		case 'b':
 			temp = getDL(ind);
@@ -383,13 +375,10 @@ std::map<char, std::set<QTreeNode*>> Board::getMoveMap()
 							forcedjump = true;
 							jumppoint = i+1;
 							
+							//other way to do this is just reset the movemap and reallocate everything with forcedjumps on.
 							//freeMoveMap(movemap);
 							//movemap.clear();
 							//i = -1; //this is -1 because of i++! it would skip 0 otherwise
-
-							//reset with forced jumps (this is so wildy inefficient i am so mad that i cant think of how to make this better)
-							//maybe save the index where its found so i postprocess if forcedjump and then do the thing. worst case its still trash but who knows.
-							//this really isnt slow and does its job but maybe try it anyways for the experience. 
 						}
 					}
 				}
@@ -419,6 +408,7 @@ std::map<char, std::set<QTreeNode*>> Board::getMoveMap()
 
 std::map<char, std::set<QTreeNode*>> Board::getLeafMoveMap() 
 {
+	//usually, this doesnt do anything since branching jumps are rare, but it is neccessary in case it does happen.
 	std::map<char, std::set<QTreeNode*>> movemap = getMoveMap();
 
 	for (auto iter = movemap.begin(); iter != movemap.end(); iter++) {
@@ -475,58 +465,97 @@ char Board::isWinningBoardGen()
 		black = black || pieces[i] == 'b' || pieces[i] == 'B';
 	}
 	if (black && !red) return 'b';
-	if (red && !black) return 'r';
+	else if (red && !black) return 'r';
 	
 	return 0;
 }
 
 int Board::rating()
 {
+	//possibly the most important method in the entire program.
+	//defines behavior of the AI
+	//all rating functions rate king pieces as 5, and normal pieces as 3, then add sugar to determine a different "playstyle"
 
+
+	if (currentTurn) {
+		//red
+		return ratingWeighted();
+	}
+	else {
+		//black
+		return ratingOffensive();
+	}
+
+	
+}
+
+int Board::ratingBasic()
+{
+	//rates solely on material advantage.
 	int rating = 0;
-	//int numpieces = 0;
-	//positive rating for red, negative rating for black.
-	//rates kings 5, pawns 2. plus 1 for keeping pieces on the back.
 	for (int i = 0; i < 32; i++) {
 		switch (pieces[i]) {
 		case 'R':
-			rating += 4;
-			//numpieces++;
+			rating += 5;
 			break;
 		case 'r':
 			rating += 2;
-			if (i > 27) rating++;
-			//numpieces++;
 			break;
 		case 'B':
-			rating -= 4;
-			//numpieces++;
+			rating -= 5;
 			break;
 		case 'b':
 			rating -= 2;
-			if (i < 4) rating--;
-			//numpieces++;
 			break;
 		}
 	}
 	return rating;
-	//return rating * (25 - numpieces);
-	
-	//rates kings 5, pawns 2. promotes moves towards the center and keeping baseline pawns. slightly more expensive and inhibits alpha-beta pruning slightly
-	/*int i = 0;
+}
+
+int Board::ratingDefensive()
+{
+	//promotes keeping back rank pawns on the back rank
+
+	int rating = 0;
+	for (int i = 0; i < 32; i++) {
+		switch (pieces[i]) {
+		case 'R':
+			rating += 5;
+			break;
+		case 'r':
+			rating += 3;
+			if (i > 27) rating++;
+			break;
+		case 'B':
+			rating -= 5;
+			break;
+		case 'b':
+			rating -= 3;
+			if (i < 4) rating--;
+			break;
+		}
+	}
+	return rating;
+}
+
+int Board::ratingOffensive()
+{
+	//gives a small bonus for back-rank pieces and for pieces in the center of the board.
+	int rating = 0;
+	int i = 0;
 	for (i; i < 7; i++) {
 		switch (pieces[i]) {
 		case 'R':
 			rating += 5;
 			break;
 		case 'r':
-			rating+=2;
+			rating+=3;
 			break;
 		case 'B':
 			rating -= 5;
 			break;
 		case 'b':
-			rating-=2;
+			rating-=3;
 			if (i < 4) rating--;
 			break;
 		}
@@ -542,7 +571,7 @@ int Board::rating()
 			if (bonus) rating++;
 			break;
 		case 'r':
-			rating += 2;
+			rating += 3;
 			if (bonus) rating++;
 			break;
 		case 'B':
@@ -550,7 +579,7 @@ int Board::rating()
 			if (bonus) rating--;
 			break;
 		case 'b':
-			rating -= 2;
+			rating -= 3;
 			if (bonus) rating--;
 			break;
 		}
@@ -562,40 +591,56 @@ int Board::rating()
 			rating += 5;
 			break;
 		case 'r':
-			rating += 2;
+			rating += 3;
 			if (i > 27) rating++;
 			break;
 		case 'B':
 			rating -= 5;
 			break;
 		case 'b':
-			rating -= 2;
+			rating -= 3;
 			break;
 		}
-	}*/ 
+	} 
+	return rating;
+}
 
-	//rates kings 5, pawns 2. nothing else. cheap and works well with pruning. VERY aggerssive playstyle. wins over the other ratings.
-	//for (int i = 0; i < 32; i++) {
-	//	switch (pieces[i]) {
-	//	case 'R':
-	//		rating += 5;
-	//		break;
-	//	case 'r':
-	//		rating += 2;
-	//		break;
-	//	case 'B':
-	//		rating -= 5;
-	//		break;
-	//	case 'b':
-	//		rating -= 2;
-	//		break;
-	//	}
-	//}
-	//return rating;
+int Board::ratingWeighted()
+{
+	//tends to rate positions more extremely when there are fewer pieces.
+	//ex: a 2-1 advantage is better than a 10-9 advantage with this rater. likes to trade.
+	
+	int rating = 0;
+	
+	int numpieces = 0;
+	for (int i = 0; i < 32; i++) {
+		switch (pieces[i]) {
+		case 'R':
+			rating += 5;
+			numpieces++;
+			break;
+		case 'r':
+			rating += 3;
+			if (i > 27) rating++;
+			numpieces++;
+			break;
+		case 'B':
+			rating -= 5;
+			numpieces++;
+			break;
+		case 'b':
+			rating -= 3;
+			if (i < 4) rating--;
+			numpieces++;
+			break;
+		}
+	}
+	return rating * (25 - numpieces);
 }
 
 void Board::print()
 {
+	//prints to console, solely for debugging
 	for (int i = 0; i < 32; i++) {
 		if ((i / 4) % 2 == 0) {
 			std::cout << " ";
@@ -612,7 +657,7 @@ void Board::print()
 
 void Board::render()
 {
-	//600x600 square, render circles, blah blah
+	//draws board to screen
 	drawFilledRectangle(0, 0, 600, 600, BOARD_LIGHT);
 	for (int i = 0; i < 32; i++) {
 		drawFilledRectangle(((i/4)%2 != 0 ? 75:0 )+ 150*(i%4),(i/4)*75, 75, 75, BOARD_DARK);

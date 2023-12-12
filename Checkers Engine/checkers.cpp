@@ -2,42 +2,8 @@
 #include "Board.h"
 SDL_Window* window;
 SDL_Renderer* renderer;
-
-
-	//at some point, filter movemaps to force jumps
-
-	//move map: maps each piece that can move (key, char) to spots where it can move (value, char. maybe use unordered set for this one).
-	//use for actual game, each board should be able to generate its own map.
-	//for doubles, id like to make circles for each of the consecutive jumps (darker)
-
-	//in game, use booleans for each side: "use best moves" automates best moves (HAVE WAITING)
-	//also, have button on right "Get best move" which highlights the best move possible in the current board.
-	//also, have the collected pieces on the sides.
-	//have buttons on the side near the best move button that can change the depth of the tree (3 - 10?/15?)
-	//include the button for whos turn it is 
-
-	//current goals:
-	//optimize (alpha-beta is first, then try these options)
-
-/*
-* optimize so when theres 1 move it just plays the goddamn move instead of looking into the future for no reason
-* 
-* find the complexity? also maybe some sets/maps can become unordered sets/maps so lookup is faster.
-* make gametree logic iterative instead of recursive (recursion is slow because of the insane stack usage, this might also make alphabeta easier to do) 
-* optimize getleafmovemap and the move pruning when there is a jump (maybe make getleafmovemap return a set of pairs?)
-* optimize rating systems 
-* 
-*/
-
-
-	//Garnish for after everything: (mostly text-based stuff)
-	/* optimize the hell out of "Board::getMoveMap" and "Board::getLeafMoveMap"
-	* on win, say who won.then, wait for "ENTER" to play again
-	* have text displaying bot mode and status
-	* display move number
-	* "tie" button (agree to draw)
-	*/
-
+bool currentTurn;
+//main function located here. Also contains the core recursive functino "get rating" and "getBestMove", and other miscellaneous functions on sets.
 
 int main(int argc, char* args[]) {
 	SDL_Event event;
@@ -53,18 +19,12 @@ int main(int argc, char* args[]) {
 	SDL_Rect redtypebox = { 675, 485, 50, 40 };
 	SDL_Rect autoplaybox = { 750, 280, 40, 40 };
 
-	char debugboard[32] =
-	{
-		0, 0, 0, 'R',
-		0, 'b', 'B', 0,
-		0, 0, 0, 0,
-		0, 0, 'b', 'b',
-		0, 0, 0, 0,
-		0, 0, 0, 'b',
-		0, 'r', 'R', 'B',
-		0, 0, 0, 0
-	};
+	char* debugboard = new char[32] {0,0,0,0,0,0,0,0,'b', 'b', 'b', 0, 0, 0, 0, 0, 'b', 'b', 'b', 0, 0, 0, 0, 0, 0, 'b', 'b', 0, 0, 0, 'R', 0};
+	
+	
+	//Board* currentboard = new Board(debugboard, true, 0, 0);
 	Board* currentboard = new Board();
+	currentTurn = currentboard->turn;
 	initSDL();
 	char square = 32, temp = 32;
 	std::map<char, std::set<QTreeNode*>> moves = currentboard->getMoveMap();
@@ -115,9 +75,7 @@ int main(int argc, char* args[]) {
 						break;
 					case BOTEASY:
 					{
-
-
-						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 4, createLeafMap(moves));
+						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 5, createLeafMap(moves));
 
 						square = pair.first;
 						usedMove = pair.second;
@@ -149,7 +107,7 @@ int main(int argc, char* args[]) {
 						break;
 					case BOTMID:
 					{
-						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 6, createLeafMap(moves));
+						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 7, createLeafMap(moves));
 
 						square = pair.first;
 						usedMove = pair.second;
@@ -157,13 +115,7 @@ int main(int argc, char* args[]) {
 						break;
 					case BOTHARD:
 					{
-						Uint64 timer = SDL_GetTicks64();
-
-
-						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 8, createLeafMap(moves));
-						
-						Uint64 after = SDL_GetTicks64();
-						std::cout << (after - timer) / 1000 << "." << (after - timer) % 1000 << " seconds\n";
+						std::pair<char, QTreeNode*> pair = getBestMove(currentboard, 9, createLeafMap(moves));
 						
 						//209,000 -> 5,000  function calls for 7
 
@@ -238,6 +190,7 @@ int main(int argc, char* args[]) {
 			}
 
 			SDL_RenderPresent(renderer);
+			currentTurn = currentboard->turn;
 		}
 	}
 
@@ -247,6 +200,7 @@ int main(int argc, char* args[]) {
 }
 
 void initSDL() {
+	//initiates SDL, opens window, creates renderer (SDL stuff, unrelated to game)
 	if (SDL_Init(SDL_INIT_EVERYTHING) < 0) {
 		std::cout << "SDL_Init error: " << SDL_GetError << "\n";
 		exit(1);
@@ -259,12 +213,6 @@ void initSDL() {
 	}
 	renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
 	SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-
-	if (TTF_Init() == -1) {
-		std::cout << "SDL_font init error: " << TTF_GetError() << "\n";
-		exit(1);
-	}
-
 }
 void freeMoveMap(std::map<char, std::set<QTreeNode*>> movemap){
 	//deletes all of the pointers of tree nodes in the trees that are in the sets that are in the map. im going insane
@@ -276,7 +224,7 @@ void freeMoveMap(std::map<char, std::set<QTreeNode*>> movemap){
 }
 
 void freeLeafMoveMap(std::map<char, std::set<QTreeNode*>> leafmovemap){
-	//same thing but i have to go back to the roots because of how my destructor works
+	//frees general map with leaf or root nodes. (goes back to the parent for every node)
 	std::unordered_set<QTreeNode*> roots;
 	for (auto i = leafmovemap.begin(); i != leafmovemap.end(); i++) {
 		for (QTreeNode* ptr : i->second) {
@@ -318,6 +266,7 @@ std::unordered_map<char, QTreeNode*> getLeafMap(std::set<QTreeNode*> from) {
 }
 
 std::map<char, std::set<QTreeNode*>> createLeafMap(std::map<char, std::set<QTreeNode*>>from) {
+	//takes map of sets of root nodes and expands them into their leaf nodes.
 	std::map<char, std::set<QTreeNode*>> ret;
 	for (auto iter = from.begin(); iter != from.end(); iter++) {
 		ret[iter->first] = getLeafSet(iter->second);
@@ -354,7 +303,7 @@ std::set<QTreeNode*> getLeafSet(std::set<QTreeNode*> from) {
 }
 
 Board* getBoardFromMove(Board* top, char square, QTreeNode* move) {
-	//the same but no animation
+	//gets the board that would be created by performing this move onto the board.
 	std::stack<QTreeNode*> moveSequence;
 	QTreeNode* curr = move;
 
@@ -376,7 +325,7 @@ Board* getBoardFromMove(Board* top, char square, QTreeNode* move) {
 }
 
 Board* performMove(Board* top, char square, QTreeNode* move) {
-	//start drawing arrow from piece to piece
+	//visually shows a move being made.
 	std::stack<QTreeNode*> moveSequence; //this is a stack so they come out in reverse order due to LIFO
 
 	QTreeNode* curr = move;
@@ -417,19 +366,22 @@ Board* performMove(Board* top, char square, QTreeNode* move) {
 }
 
 int getRating(Board* board, int depth, int parentM) {
-	//first, check if the board is a win or a tie
+	//recursively gets the rating of a board. if depth ==1, returns the static rating.
 	switch (board->isWinningBoard()) {
 	case 'b':
 		return -100;
 	case 'r':
 		return 100;
 	}
+	if (depth <= 1) {
+		//we dont want to generate a movemap for depth == 1: use O(1) static rating
+		return board->rating();
+	}
+
 	std::map <char, std::set<QTreeNode*>> todelete = board->getMoveMap();
 	std::map <char, std::set<QTreeNode*>> moves = createLeafMap(todelete); //uses the same ptrs, so we only have to free todelete
 	if (moves.empty()) return 0;
-	if (depth <= 1) {
-		return board->rating();
-	}
+
 	int bestrating = board->turn ? -101:101; 
 	Board* tempboard;
 	int temprating;
@@ -464,8 +416,9 @@ int getRating(Board* board, int depth, int parentM) {
 }
 
 std::pair<char, QTreeNode*> getBestMove(Board* board, int depth, std::map<char,std::set<QTreeNode*>> moves) {
-	
-	if (moves.size() == 1) { //this happens often when a jump is forced
+	//gets the bst move from the moves available in moves
+
+	if (moves.size() == 1) { //this happens often when a jump is forced: allows us to skip the recursion and choose the only move - saves time.
 		if (moves.begin()->second.size() == 1) {
 			return std::pair<char, QTreeNode*>(moves.begin()->first, *(moves.begin()->second.begin()));
 		}

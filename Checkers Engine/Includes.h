@@ -14,6 +14,7 @@
 const int SCREEN_HEIGHT = 600, SCREEN_WIDTH = 800;
 extern SDL_Window* window;
 extern SDL_Renderer* renderer;
+extern bool currentTurn;
 
 class Board;
 
@@ -36,7 +37,7 @@ public:
 
 
 typedef enum PlayerType {
-	HUMAN, //Human input, moves pieces.
+	HUMAN, //human input, moves pieces manually.
 	BOTEASY, //best move finding engine - low depth. (depth = 4)
 	BOTMID, //best move finding engine - mid depth. (depth = 7)
 	BOTHARD //best move finding engine - high depth. (depth = 8)
@@ -44,11 +45,7 @@ typedef enum PlayerType {
 const int TYPENUM = 4;
 
 
-//potentially add more for different types: BOTRANDOM (chooses random move), BOTBAD (plays worst move?)
-
-//this will help differentiate between playing with different engine depths and human players.
-
-//colors
+//colors (for SDL rendering)
 const SDL_Color BOARD_LIGHT = { 111, 78, 55 ,255 };
 const SDL_Color BOARD_DARK = { 253, 214, 167, 255};
 const SDL_Color SILVER = { 120,120,120,255 };
@@ -60,7 +57,8 @@ const SDL_Color GOLD = { 219,172,52, 255 };
 const SDL_Color WHITE = { 255,255,255,255 };
 const SDL_Color GREEN = { 50,205,50 , 255 };
 
-//main.cpp
+
+//main.cpp functions
 void initSDL();
 void freeMoveMap(std::map<char, std::set<QTreeNode*>> movemap);
 std::unordered_map<char, QTreeNode*> getLeafMap(std::set<QTreeNode*> from);
@@ -71,7 +69,7 @@ int getRating(Board* board, int depth, int parentM);
 std::pair<char, QTreeNode*> getBestMove(Board* board, int depth, std::map<char,std::set<QTreeNode*>> move);
 std::map<char, std::set<QTreeNode*>> createLeafMap(std::map<char, std::set<QTreeNode*>>from);
 
-//graphics.cpp
+//graphics.cpp functions (mostly rendering/helper functions)
 void drawCircle(Vec2 pos, int radius);
 void drawCircle(int cx, int cy, int radius);
 void drawCircle(int cx, int cy, int radius, SDL_Color color);
@@ -107,7 +105,6 @@ bool rectIsTouched(SDL_Rect rect, int x, int y);
 bool rectIsTouched(SDL_Rect rect, Vec2 pos);
 void drawArrow(Vec2 p1, Vec2 p2, SDL_Color color);
 void drawArrow(int x1, int y1, int x2, int y2, SDL_Color color);
-
 Vec2 getMousePos();
 Vec2 getMousePos(SDL_Event event);
 char getUR(char piece);

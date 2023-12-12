@@ -1,6 +1,6 @@
 #include "Includes.h"
 
-
+//many helper functions for SDL rendering and some for indexing.
 
 void setRenderColor(SDL_Color color) {
 	SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);

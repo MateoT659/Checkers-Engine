@@ -1,5 +1,8 @@
 #pragma once
 #include <string>
+
+//vector class that makes rendering to certain 2d points much easier and more organized.
+
 class Vec2
 {
 public:
