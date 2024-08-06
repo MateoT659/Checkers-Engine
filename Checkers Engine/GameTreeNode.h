@@ -15,4 +15,4 @@ public:
 };
 
 //this class is not actually used at all but I used this "class" as a basis for conceptual graph tree stuff when I was figuring out the algorithm,
-//kept it to show thought process/ how I view the game tree conceptually
+//kept it to show thought process/how I view the game tree conceptually
